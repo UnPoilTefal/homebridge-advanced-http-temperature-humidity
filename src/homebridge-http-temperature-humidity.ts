@@ -13,7 +13,7 @@ let hap: HAP;
 /*
  * Initializer function called when the plugin is loaded.
  */
-export = (api: API) => {
+export default (api: API) => {
   hap = api.hap;
   api.registerAccessory(
     'homebridge-http-temperature-humidity-sensor',
@@ -91,7 +91,7 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
           // push the new value to HomeKit
           this.temperatureService.updateCharacteristic(hap.Characteristic.CurrentTemperature, this.accessoryState.temperature);
           this.temperatureService.updateCharacteristic(hap.Characteristic.StatusActive, this.accessoryState.statusActive);
-          if(this.disableHumidity !== true) {
+          if (this.disableHumidity !== true) {
             this.humidityService.updateCharacteristic(hap.Characteristic.CurrentRelativeHumidity, this.accessoryState.humidity);
             this.humidityService.updateCharacteristic(hap.Characteristic.StatusActive, this.accessoryState.statusActive);
           }
@@ -139,6 +139,7 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
     this.log('getCurrentRelativeHumidity: ' + currentRelativeHumidity);
     return currentRelativeHumidity;
   }
+
   getStatusActive(): boolean {
     const currentStatusActive = this.accessoryState.statusActive;
     this.log('getCurrentStatusActive: ' + currentStatusActive);
@@ -150,9 +151,9 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
     await this.callServer()
       .then((temperatureAndHumidity: TemperatureAndHumidity) => {
         this.log.debug('CallServerResponse: Temperature: '
-         + temperatureAndHumidity.temperature
-         + ' Humidity: '
-         + temperatureAndHumidity.humidity);
+          + temperatureAndHumidity.temperature
+          + ' Humidity: '
+          + temperatureAndHumidity.humidity);
         this.accessoryState.temperature = temperatureAndHumidity.temperature;
         this.accessoryState.humidity = temperatureAndHumidity.humidity;
         updated = true;
