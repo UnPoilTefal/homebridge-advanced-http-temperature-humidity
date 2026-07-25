@@ -5,27 +5,49 @@ import {
   HAP,
   Logging,
   Service,
+  CharacteristicValue,
 } from 'homebridge';
-import fetch from 'node-fetch';
+import fetch, { RequestInit } from 'node-fetch';
 
 let hap: HAP;
 
-/*
- * Initializer function called when the plugin is loaded.
- */
 export default (api: API) => {
   hap = api.hap;
   api.registerAccessory(
-    'homebridge-http-temperature-humidity-sensor',
+    'homebridge-http-environment-controller',
     'HttpTemperatureHumiditySensor',
     HttpTemperatureHumidityAccessory,
   );
+  api.registerAccessory(
+    'homebridge-http-environment-controller',
+    'HttpFanController',
+    HttpFanControllerAccessory,
+  );
 };
+
+// ---------------------------------------------------------------------------
+// HTTP helper — fetch with 5s timeout
+// ---------------------------------------------------------------------------
+
+const FETCH_TIMEOUT_MS = 5000;
+
+async function fetchJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: ac.signal });
+    return res.json() as Promise<T>;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Accessory 1 — Temperature & Humidity sensor
+// ---------------------------------------------------------------------------
 
 class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
   private readonly log: Logging;
-
-  //Config
   private readonly name: string;
   private readonly url: string;
   private readonly manufacturer: string;
@@ -34,7 +56,6 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
   private readonly disableHumidity: boolean;
   private readonly refresh_interval: number;
 
-  /* Characteristic States */
   private accessoryState = {
     temperature: 0,
     humidity: 0,
@@ -47,18 +68,14 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
 
   constructor(log: Logging, config: AccessoryConfig) {
     this.log = log;
-
-    //Retrieve Configuration
     this.name = config.name;
     this.url = config.url;
     this.manufacturer = config.manufacturer || 'HttpTemperatureHumidity';
     this.model = config.model || 'Default';
     this.serial = config.serial || '18981898';
     this.refresh_interval = config.refresh || 30;
-
     this.disableHumidity = config.disableHumidity || false;
 
-    // Define TemperatureService
     this.temperatureService = new hap.Service.TemperatureSensor('Temperature');
     this.temperatureService
       .getCharacteristic(hap.Characteristic.CurrentTemperature)
@@ -67,7 +84,6 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
       .getCharacteristic(hap.Characteristic.StatusActive)
       .onGet(this.getStatusActive.bind(this));
 
-    // Define HumidityService
     this.humidityService = new hap.Service.HumiditySensor('Humidity');
     if (this.disableHumidity !== true) {
       this.humidityService
@@ -78,104 +94,200 @@ class HttpTemperatureHumidityAccessory implements AccessoryPlugin {
         .onGet(this.getStatusActive.bind(this));
     }
 
-    // Define InformationService
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, this.manufacturer)
       .setCharacteristic(hap.Characteristic.Model, this.model)
       .setCharacteristic(hap.Characteristic.SerialNumber, this.serial);
 
     setInterval(() => {
-      this.log.debug('Triggering updateAccessoryState');
-      this.updateAllStates()
-        .then(() => {
-          // push the new value to HomeKit
-          this.temperatureService.updateCharacteristic(hap.Characteristic.CurrentTemperature, this.accessoryState.temperature);
-          this.temperatureService.updateCharacteristic(hap.Characteristic.StatusActive, this.accessoryState.statusActive);
-          if (this.disableHumidity !== true) {
-            this.humidityService.updateCharacteristic(hap.Characteristic.CurrentRelativeHumidity, this.accessoryState.humidity);
-            this.humidityService.updateCharacteristic(hap.Characteristic.StatusActive, this.accessoryState.statusActive);
-          }
-        });
-    }, this.getRefreshIntervalInMillis());
+      this.updateAllStates().then(() => {
+        this.temperatureService.updateCharacteristic(hap.Characteristic.CurrentTemperature, this.accessoryState.temperature);
+        this.temperatureService.updateCharacteristic(hap.Characteristic.StatusActive, this.accessoryState.statusActive);
+        if (this.disableHumidity !== true) {
+          this.humidityService.updateCharacteristic(hap.Characteristic.CurrentRelativeHumidity, this.accessoryState.humidity);
+          this.humidityService.updateCharacteristic(hap.Characteristic.StatusActive, this.accessoryState.statusActive);
+        }
+      });
+    }, this.refresh_interval * 1000);
 
-    //Initialize state
     this.updateAllStates();
     log.info(`${this.name} finished initializing!`);
-    log.debug(`Will refresh state every ${this.refresh_interval}sec`);
   }
 
-  /*
-   * This method is optional to implement. It is called when HomeKit ask to identify the accessory.
-   * Typical this only ever happens at the pairing process.
-   */
   identify(): void {
     this.log('Identify!');
   }
 
-  /*
-   * This method is called directly after creation of this instance.
-   * It should return all services which should be added to the accessory.
-   */
   getServices(): Service[] {
-    const services: Array<Service> = new Array<Service>(
-      this.informationService,
-      this.temperatureService,
-    );
-    if (this.disableHumidity !== true) {
-      services.push(this.humidityService);
-    }
-
+    const services: Service[] = [this.informationService, this.temperatureService];
+    if (this.disableHumidity !== true) services.push(this.humidityService);
     return services;
   }
 
   getCurrentTemperature(): number {
-    const currentTemperature = this.accessoryState.temperature;
-    this.log('getCurrentTemperature: ' + currentTemperature);
-    return currentTemperature;
+    return this.accessoryState.temperature;
   }
 
-  getCurrentRelativeHumidity() {
-    const currentRelativeHumidity = this.accessoryState.humidity;
-    this.log('getCurrentRelativeHumidity: ' + currentRelativeHumidity);
-    return currentRelativeHumidity;
+  getCurrentRelativeHumidity(): number {
+    return this.accessoryState.humidity;
   }
 
   getStatusActive(): boolean {
-    const currentStatusActive = this.accessoryState.statusActive;
-    this.log('getCurrentStatusActive: ' + currentStatusActive);
-    return currentStatusActive;
+    return this.accessoryState.statusActive;
   }
 
-  async updateAllStates() {
+  async updateAllStates(): Promise<boolean> {
     let updated = false;
-    await this.callServer()
-      .then((temperatureAndHumidity: TemperatureAndHumidity) => {
-        this.log.debug('CallServerResponse: Temperature: '
-          + temperatureAndHumidity.temperature
-          + ' Humidity: '
-          + temperatureAndHumidity.humidity);
-        this.accessoryState.temperature = temperatureAndHumidity.temperature;
-        this.accessoryState.humidity = temperatureAndHumidity.humidity;
-        updated = true;
-      })
-      .catch((error) => {
-        this.log('updateAllStates Error : ' + error.message);
-      });
+    try {
+      const data = await fetchJSON<WeatherStatus>(this.url);
+      this.accessoryState.temperature = data.temperature;
+      this.accessoryState.humidity = data.humidity;
+      updated = true;
+    } catch (e) {
+      this.log('updateAllStates error: ' + e);
+    }
     this.accessoryState.statusActive = updated;
     return updated;
   }
-
-  async callServer(): Promise<TemperatureAndHumidity> {
-    const response = await fetch(this.url);
-    return response.json() as Promise<TemperatureAndHumidity>;
-  }
-
-  private getRefreshIntervalInMillis(): number {
-    return this.refresh_interval * 1000;
-  }
-
 }
-interface TemperatureAndHumidity {
+
+// ---------------------------------------------------------------------------
+// Accessory 2 — Fan controller
+// ---------------------------------------------------------------------------
+
+class HttpFanControllerAccessory implements AccessoryPlugin {
+  private readonly log: Logging;
+  private readonly name: string;
+  private readonly url: string;
+  private readonly refreshInterval: number;
+
+  private state: {
+    targetFanState: CharacteristicValue;
+    rotationSpeed: CharacteristicValue;
+    active: CharacteristicValue;
+  };
+
+  private readonly fanService: Service;
+  private readonly informationService: Service;
+
+  constructor(log: Logging, config: AccessoryConfig) {
+    this.log = log;
+    this.name = config.name;
+    this.url = config.url;
+    this.refreshInterval = (config.refresh || 30) * 1000;
+
+    this.state = {
+      targetFanState: hap.Characteristic.TargetFanState.AUTO,
+      rotationSpeed: 0,
+      active: hap.Characteristic.Active.ACTIVE,
+    };
+
+    this.informationService = new hap.Service.AccessoryInformation()
+      .setCharacteristic(hap.Characteristic.Manufacturer, config.manufacturer || 'Arduino')
+      .setCharacteristic(hap.Characteristic.Model, config.model || 'MKR WiFi 1010')
+      .setCharacteristic(hap.Characteristic.SerialNumber, config.serial || '00000001');
+
+    this.fanService = new hap.Service.Fanv2(this.name);
+
+    // Active — reflète la disponibilité de l'Arduino (pas un vrai on/off)
+    // Le setTimeout garantit que le push-back part après la réponse SET,
+    // sinon le client HomeKit ignore la notification (même tick HAP).
+    this.fanService.getCharacteristic(hap.Characteristic.Active)
+      .onGet(() => this.state.active)
+      .onSet(async (value) => {
+        if (value === hap.Characteristic.Active.INACTIVE) {
+          await this.postFan('auto');
+          this.state.targetFanState = hap.Characteristic.TargetFanState.AUTO;
+          this.fanService.updateCharacteristic(hap.Characteristic.TargetFanState, hap.Characteristic.TargetFanState.AUTO);
+        }
+        // Repasser en ACTIVE après la réponse SET pour que le client reçoive la notification
+        setTimeout(() => {
+          this.state.active = hap.Characteristic.Active.ACTIVE;
+          this.fanService.updateCharacteristic(hap.Characteristic.Active, hap.Characteristic.Active.ACTIVE);
+        }, 300);
+      });
+
+    // TargetFanState — AUTO / MANUAL
+    this.fanService.getCharacteristic(hap.Characteristic.TargetFanState)
+      .onGet(() => this.state.targetFanState)
+      .onSet(async (value) => {
+        const isAuto = value === hap.Characteristic.TargetFanState.AUTO;
+        await this.postFan(isAuto ? 'auto' : 'manual', isAuto ? undefined : this.state.rotationSpeed as number);
+        this.state.targetFanState = value;
+      });
+
+    // RotationSpeed — slider 0-100%
+    this.fanService.getCharacteristic(hap.Characteristic.RotationSpeed)
+      .onGet(() => this.state.rotationSpeed)
+      .onSet(async (value) => {
+        const speed = value as number;
+        await this.postFan('manual', speed);
+        this.state.rotationSpeed = speed;
+        // Changer la vitesse bascule automatiquement en manuel
+        this.state.targetFanState = hap.Characteristic.TargetFanState.MANUAL;
+        this.fanService.updateCharacteristic(hap.Characteristic.TargetFanState, hap.Characteristic.TargetFanState.MANUAL);
+      });
+
+    setInterval(() => this.syncState(), this.refreshInterval);
+    this.syncState();
+    log.info(`${this.name} initialized`);
+  }
+
+  identify(): void {
+    this.log('Identify!');
+  }
+
+  getServices(): Service[] {
+    return [this.informationService, this.fanService];
+  }
+
+  private async postFan(mode: 'auto' | 'manual', speedPct?: number): Promise<void> {
+    const body = mode === 'manual'
+      ? { mode, speed_pct: speedPct ?? 50 }
+      : { mode };
+    try {
+      await fetchJSON<FanStatus>(this.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      this.log.error(`Fan POST failed: ${e}`);
+    }
+  }
+
+  private async syncState(): Promise<void> {
+    try {
+      const data = await fetchJSON<FanStatus>(this.url);
+
+      this.state.targetFanState = data.mode === 'auto'
+        ? hap.Characteristic.TargetFanState.AUTO
+        : hap.Characteristic.TargetFanState.MANUAL;
+      this.state.rotationSpeed = data.speed_pct;
+      this.state.active = hap.Characteristic.Active.ACTIVE;
+
+      this.fanService.updateCharacteristic(hap.Characteristic.TargetFanState, this.state.targetFanState);
+      this.fanService.updateCharacteristic(hap.Characteristic.RotationSpeed, this.state.rotationSpeed);
+      this.fanService.updateCharacteristic(hap.Characteristic.Active, this.state.active);
+    } catch (e) {
+      this.log.error(`Fan sync failed: ${e}`);
+      this.state.active = hap.Characteristic.Active.INACTIVE;
+      this.fanService.updateCharacteristic(hap.Characteristic.Active, hap.Characteristic.Active.INACTIVE);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Interfaces
+// ---------------------------------------------------------------------------
+
+interface WeatherStatus {
   readonly temperature: number;
   readonly humidity: number;
+}
+
+interface FanStatus {
+  readonly mode: 'auto' | 'manual';
+  readonly speed_pct: number;
+  readonly temperature: number;
 }

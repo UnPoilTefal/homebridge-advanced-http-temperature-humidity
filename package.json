@@ -1,8 +1,8 @@
 {
-  "name": "homebridge-http-temperature-humidity-sensor",
-  "version": "3.0.0",
+  "name": "homebridge-http-environment-controller",
+  "version": "1.1.0",
   "type": "module",
-  "description": "Plugin to display temperature and humidity via http in homebridge",
+  "description": "Homebridge plugin to expose HTTP environment sensors (temperature, humidity) and control a PWM fan via HomeKit",
   "main": "dist/homebridge-http-temperature-humidity.js",
   "scripts": {
     "clean": "rimraf ./dist",
@@ -18,7 +18,12 @@
   "keywords": [
     "homebridge-plugin",
     "temperature",
-    "humidity"
+    "humidity",
+    "fan",
+    "pwm",
+    "environment",
+    "http",
+    "arduino"
   ],
   "author": "UnPoilTefal",
   "license": "ISC",
@@ -34,8 +39,7 @@
     "node-fetch": "^3.3.0"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
-    "@types/node-fetch": "^3.0.0",
+    "@types/node": "^20.19.43",
     "@typescript-eslint/eslint-plugin": "^6.7.0",
     "@typescript-eslint/parser": "^6.7.0",
     "eslint": "^8.49.0",
