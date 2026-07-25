@@ -1,9 +1,9 @@
 {
-  "name": "homebridge-http-temperature-humidity-sensor",
-  "version": "3.0.0",
+  "name": "homebridge-http-environment-controller",
+  "version": "1.1.0",
   "type": "module",
-  "description": "Plugin to display temperature and humidity via http in homebridge",
-  "main": "dist/homebridge-http-temperature-humidity.js",
+  "description": "Homebridge plugin to expose HTTP environment sensors (temperature, humidity) and control a PWM fan via HomeKit",
+  "main": "dist/index.js",
   "scripts": {
     "clean": "rimraf ./dist",
     "build": "rimraf ./dist && tsc",
@@ -13,19 +13,24 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/UnPoilTefal/homebridge-advanced-http-temperature-humidity.git"
+    "url": "git+https://github.com/UnPoilTefal/homebridge-http-environment-controller.git"
   },
   "keywords": [
     "homebridge-plugin",
     "temperature",
-    "humidity"
+    "humidity",
+    "fan",
+    "pwm",
+    "environment",
+    "http",
+    "arduino"
   ],
   "author": "UnPoilTefal",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/UnPoilTefal/homebridge-advanced-http-temperature-humidity/issues"
+    "url": "https://github.com/UnPoilTefal/homebridge-http-environment-controller/issues"
   },
-  "homepage": "https://github.com/UnPoilTefal/homebridge-advanced-http-temperature-humidity#readme",
+  "homepage": "https://github.com/UnPoilTefal/homebridge-http-environment-controller#readme",
   "engines": {
     "homebridge": "^1.6.0 || ^2.0.0-beta.0",
     "node": ">=18"
@@ -34,8 +39,7 @@
     "node-fetch": "^3.3.0"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
-    "@types/node-fetch": "^3.0.0",
+    "@types/node": "^20.19.43",
     "@typescript-eslint/eslint-plugin": "^6.7.0",
     "@typescript-eslint/parser": "^6.7.0",
     "eslint": "^8.49.0",
